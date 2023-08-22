@@ -1,0 +1,1 @@
+Turn multiple LEDs on and off, following the "from red to green" traffic light pattern.
