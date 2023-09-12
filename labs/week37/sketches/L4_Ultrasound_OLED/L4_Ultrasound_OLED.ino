@@ -1,27 +1,9 @@
-/**************************************************************************
- This is an example for our Monochrome OLEDs based on SSD1306 drivers
-
- Pick one up today in the adafruit shop!
- ------> http://www.adafruit.com/category/63_98
-
- This example is for a 128x64 pixel display using I2C to communicate
- 3 pins are required to interface (two I2C and one reset).
-
- Adafruit invests time and resources providing this open
- source code, please support Adafruit and open-source
- hardware by purchasing products from Adafruit!
-
- Written by Limor Fried/Ladyada for Adafruit Industries,
- with contributions from the open source community.
- BSD license, check license.txt for more information
- All text above, and the splash screen below must be
- included in any redistribution.
- **************************************************************************/
+//This code measures distance using an ultrasonic sensor and displays the results on an OLED screen.
 
 #include <SPI.h>
-#include <Wire.h>
-#include <Adafruit_GFX.h>
-#include <Adafruit_SSD1306.h>
+#include <Wire.h> // Include the Wire library for I2C communication
+#include <Adafruit_GFX.h> // Include the Adafruit graphics library
+#include <Adafruit_SSD1306.h>  // Include the Adafruit SSD1306 OLED display library
 
 #define SCREEN_WIDTH 128 // OLED display width, in pixels
 #define SCREEN_HEIGHT 64 // OLED display height, in pixels
@@ -29,16 +11,18 @@
 // Declaration for an SSD1306 display connected to I2C (SDA, SCL pins)
 #define OLED_RESET     4 // Reset pin # (or -1 if sharing Arduino reset pin)
 
-String ds;  // distance
-int trigPin = 8;
-int echoPin = 7;
-long duration, distance;
+String ds;  // Distance measurement string
+int trigPin = 8; //Trigger pin for the ultrasonic sensor
+int echoPin = 7; // Echo pin for the ultrasonic sensor
+long duration, distance; // Variables to store duration and distance measurements
 
+// Initialize the OLED display
 Adafruit_SSD1306 display(SCREEN_WIDTH, SCREEN_HEIGHT, &Wire, OLED_RESET);
+
 void setup() {
-  Serial.begin(9600);
-  pinMode(trigPin, OUTPUT);
-  pinMode(echoPin, INPUT);
+  Serial.begin(9600); // Initialize serial communication at 9600 baud
+  pinMode(trigPin, OUTPUT); // Set the trigger pin as an output
+  pinMode(echoPin, INPUT); // Set the echo pin as an input
 
   // SSD1306_SWITCHCAPVCC = generate display voltage from 3.3V internally
   if(!display.begin(SSD1306_SWITCHCAPVCC, 0x3C)) { // Address 0x3D for 128x64
@@ -52,7 +36,6 @@ void setup() {
 }
 
 void loop() {
-
   // Signal a quick LOW just before giving a HIGH signal
   digitalWrite(trigPin, LOW);
   delayMicroseconds(2);
@@ -70,8 +53,9 @@ void loop() {
   distance = (duration/2) / 29.1;
   // Print the distance on the Serial Monitor window
   Serial.print(distance);
+
   Serial.println(" cm");
-  // time to dsplay result
+  // time to display the result on the OLED display 
   // using code from testdrawstyles()
   display.clearDisplay();
   display.setTextSize(1);             // Normal 1:1 pixel scale
@@ -84,5 +68,5 @@ void loop() {
   ds = String(distance) + " cm";
   display.println(ds);
   display.display();
-  delay(2000);
+  delay(2000); // Delay for 2 seconds before the next measurement
 }
