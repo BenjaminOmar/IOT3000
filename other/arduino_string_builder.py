@@ -14,16 +14,20 @@ def build_code_lines(filepath: Path, name: str, oneline: bool) -> str:
     with open(filepath) as f:
         lines = f.read().splitlines()
     if oneline:
-        return f"{name} = {''.join(map(format_line, lines))};"
+        value = ''.join(map(_format_value, lines))
+        return format_line(name, value, True)
     return "\n".join(
-        [f"{name} = \"{format_line(lines[0])}\";"]
+        [format_line(name, _format_value(lines[0]), True)]
         + [
-            f"{name} += \"{format_line(line)}\";"
+            format_line(name, _format_value(line))
             for line in lines[1:]
         ]
     )
 
-def format_line(text: str) -> str:
+def format_line(name: str, value: str, is_first: bool = False) -> str:
+    return f"{name} {'+' if not is_first else ''}= \"{value}\";"
+
+def _format_value(text: str) -> str:
     expressions = [
         (r"[\r\t]", ""),
         (r"^\s{2,}", ""),
