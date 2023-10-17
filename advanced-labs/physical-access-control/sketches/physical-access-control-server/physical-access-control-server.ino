@@ -2,8 +2,8 @@
 #include <ESP8266WebServer.h>
 
 #ifndef STASSID
-#define STASSID "Ellen"
-#define STAPSK "abcd1234"
+#define STASSID "NotFreeWiFi"
+#define STAPSK "dcdb3739"
 #endif
 
 const char* ssid = STASSID;
