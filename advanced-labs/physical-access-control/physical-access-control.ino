@@ -13,8 +13,8 @@
 #define ON  true
 #define OFF false
 
-#define MILLIS_BETWEEN_KEY_PRESS      1000
-#define MILLIS_WAIT_AFTER_CODE_CHECK  5000
+#define MILLIS_BETWEEN_KEY_PRESS 1000
+#define MILLIS_AFTER_CODE_CHECK  5000
 
 #define LCD_ROWS 2
 #define LCD_COLS 16
@@ -32,7 +32,7 @@ const char ALL_KEYS[ROWS][COLS] = {
   {'7','8','9','C'},
   {'*','0','#','D'}
 };
-const char SECRET_CODE[MAX_CODE_LENGTH] = {'1', '2', '3', '4'};
+const char SECRET_KEYS[MAX_CODE_LENGTH] = {'1', '4', '7', '*'};
 
 const byte rowPins[ROWS] = {2, 3, 4, 5}; //connect to the row pinouts of the keypad
 const byte colPins[COLS] = {6, 7, 8, 9}; //connect to the column pinouts of the keypad
@@ -88,7 +88,7 @@ void loop() {
     const String asString = keys;
     Serial.println("You entered: " + asString.substring(0, asString.length() - 1));
 
-    bool isValidCode = strncmp(keys, SECRET_CODE, sizeof(keys)) == 0;
+    bool isValidCode = strncmp(keys, SECRET_KEYS, sizeof(keys)) == 0;
     if (isValidCode) {
       turnOnOneLED(true);
       displayLines("ACCESS GRANTED", "Welcome!");
@@ -98,7 +98,7 @@ void loop() {
     }
     
     resetKeys();
-    delay(MILLIS_WAIT_AFTER_CODE_CHECK);
+    delay(MILLIS_AFTER_CODE_CHECK);
     
     lcd.clear();
     displayedEnterCodeText = false;
