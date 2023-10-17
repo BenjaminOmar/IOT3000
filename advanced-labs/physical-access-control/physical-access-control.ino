@@ -21,6 +21,7 @@
 
 #define MAX_CODE_LENGTH 4
 #define ENTER_CODE_TEXT "Enter code"
+#define SECRET_SYMBOL   '*'
 
 const byte ROWS = 4;
 const byte COLS = 4;
@@ -80,7 +81,7 @@ void loop() {
     if (key) {
       addNewKey(key);
       Serial.println("Pressed: " + String(key));
-      displayLines(ENTER_CODE_TEXT, getAsSecret('*'));
+      displayLines(ENTER_CODE_TEXT, getAsSecret(SECRET_SYMBOL));
       delay(MILLIS_BETWEEN_KEY_PRESS);
     }
   } else {
