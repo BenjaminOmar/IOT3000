@@ -23,47 +23,45 @@ enum AlarmState {
 int state = LOW;
 int val = 0;
 
-int buzzerState = LOW;
 enum AlarmState alarmState = NOT_ENGAGED;
-
-unsigned long hexcodeReceived;
+unsigned long signalCodeReceived;
 
 void setup() {
   Serial.begin(9600);
 
   IrReceiver.begin(IR_PIN, false);   // Start the receiver
-  setup_pir();
+  Serial.println("[SETUP] IR receiver set up and ready");
+  
+  setupPIR();
+  Serial.println("[SETUP] PIR set up and ready");
+
   pinMode(R_LED_PIN, OUTPUT);
   pinMode(Y_LED_PIN, OUTPUT);
   pinMode(G_LED_PIN, OUTPUT);
-  Serial.println("[INFO] Alarm set up and ready");
+  Serial.println("[SETUP] LEDs set up and ready");
   
   pinMode(BUZZER_PIN, OUTPUT);
   Timer1.initialize(500);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
   Timer1.attachInterrupt(toggleBuzzerPin); // knytt interrupt-funksjonen til timeren
-  // TODO Serial.println
+  Serial.println("[SETUP] Buzzer set up and ready");
 
   delay(2000);
 }
 
 void loop(){
   handleState(alarmState);
-
-  read_ir();
   
-  if (alarmState == ACTIVATED) {
-    // TODO deactivating code
+  bool hasChanged = readInfraRedSignalCode();
+  if (!hasChanged) return;
 
-    if (checkFor(OK_HEXCODE)) {
+  if (alarmState == ACTIVATED) {
+    if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ENGAGED;
       stopTone();
       Serial.println("ALARM IS NOW DEACTIVATED, SLAPP AV!");
     }
-    hexcodeReceived = 0;
   } else {
-    // delay(1000);
-
-    if (checkFor(POWER_HEXCODE)) {
+    if (signalCodeReceived == POWER_HEXCODE) {
       if (alarmState == ENGAGED) {
         alarmState = NOT_ENGAGED;
         Serial.println("ALARM IS NOT READY");
@@ -71,11 +69,10 @@ void loop(){
         alarmState = ENGAGED;
         Serial.println("ALARM IS NOW READY");
       }
-    } else if (checkFor(OK_HEXCODE)) {
+    } else if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ACTIVATED;
       Serial.println("ALARM IS NOW ACTIVATED, RUN!");
     }
-    hexcodeReceived = 0;
     
     if (alarmState == ENGAGED) {
       // READ MOTION VALUE
@@ -101,23 +98,21 @@ void loop(){
   }
 }
 
-void setup_pir() {
+void setupPIR() {
   pinMode(PIR_PIN, INPUT);
 }
 
-void read_ir() {
+bool readInfraRedSignalCode() {
   if (IrReceiver.decode())
   {
-    hexcodeReceived = IrReceiver.decodedIRData.decodedRawData;
-    Serial.println(hexcodeReceived, HEX);
-    Serial.println(hexcodeReceived);
+    signalCodeReceived = IrReceiver.decodedIRData.decodedRawData;
+    Serial.println(signalCodeReceived, HEX);
+    Serial.println(signalCodeReceived);
     Serial.println("================");
-    IrReceiver.resume(); // Receive the next value
+    IrReceiver.resume();
+    return true;
   }
-}
-
-bool checkFor(unsigned long hexcode) {
-  return (hexcodeReceived == hexcode);
+  return false;
 }
 
 void handleState(enum AlarmState state) {
