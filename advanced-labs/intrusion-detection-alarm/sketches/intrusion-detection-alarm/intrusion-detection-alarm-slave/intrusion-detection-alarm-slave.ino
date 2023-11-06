@@ -19,25 +19,16 @@ void loop() {
 void receiveEvent(int bytes) {
   char x = Wire.read();
   if (x == 'A') {
-    zap2();
+    activateSound();
   } else if (x == 'D') {
-    zap3();
+    noTone(BUZZER_PIN);
   }
   Serial.println(x);
 }
 
-void zap3() {
-  for (float f=0;f>10;f=f*0.85){
-    tone(BUZZER_PIN,2*f);
-    delay(5);
-    tone(BUZZER_PIN,f);
-    delay(5); 
-  }
-}
-
-void zap2()
+void activateSound()
 {
-  for (float f=200;f>10;f=f*0.85){
+  for (float f=3000;f>10;f=f*0.85){
     tone(BUZZER_PIN,2*f);
     delay(5);
     tone(BUZZER_PIN,f);

@@ -60,7 +60,6 @@ void loop(){
       Wire.beginTransmission(8);
       Wire.write('D');
       Wire.endTransmission();
-      delay(1000);
     }
   } else {
     if (signalCodeReceived == POWER_HEXCODE) {
@@ -77,7 +76,6 @@ void loop(){
       Wire.beginTransmission(8);
       Wire.write('A');
       Wire.endTransmission();
-      delay(1000);
 
       Serial.println("ALARM IS NOW ACTIVATED, RUN!");
     }
@@ -103,7 +101,6 @@ void loop(){
         Wire.beginTransmission(8);
         Wire.write('A');
         Wire.endTransmission();
-        delay(1000);
 
         return;
       }
