@@ -11,7 +11,8 @@
 #define POWER_HEXCODE 3125149440
 #define OK_HEXCODE    3927310080
 
-#define SLAVE_ADDRESS 8
+#define MSG_ACTIVATE    'A'
+#define MSG_DEACTIVATE  'D'
 
 enum AlarmState {
   NOT_ENGAGED,
@@ -48,18 +49,18 @@ void setup() {
 void loop(){
   handleState(alarmState);
   
-  bool hasChanged = readInfraRedSignalCode();
-  if (!hasChanged) return;
+  bool hasReceived = readInfraRedSignalCode();
+  if (!hasReceived) return;
 
   if (alarmState == ACTIVATED) {
-    if (!buzzerIsActivated) {
-      sendToOtherArduino(true);
-    }
-
     if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ENGAGED;
       Serial.println("ALARM IS NOW DEACTIVATED, SLAPP AV!");
-      sendToOtherArduino(false);
+      
+      Wire.beginTransmission(8);
+      Wire.write('D');
+      Wire.endTransmission();
+      delay(1000);
     }
   } else {
     if (signalCodeReceived == POWER_HEXCODE) {
@@ -72,6 +73,12 @@ void loop(){
       }
     } else if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ACTIVATED;
+
+      Wire.beginTransmission(8);
+      Wire.write('A');
+      Wire.endTransmission();
+      delay(1000);
+
       Serial.println("ALARM IS NOW ACTIVATED, RUN!");
     }
     
@@ -92,6 +99,12 @@ void loop(){
       }
       if (state == HIGH) {
         alarmState = ACTIVATED;
+
+        Wire.beginTransmission(8);
+        Wire.write('A');
+        Wire.endTransmission();
+        delay(1000);
+
         return;
       }
     }
@@ -135,9 +148,10 @@ void handleState(enum AlarmState state) {
   }
 }
 
-void sendToOtherArduino(bool activate) {
-  Wire.beginTransmission(SLAVE_ADDRESS);
-  Wire.write(activate);
+void sendToOtherArduino(char msg) {
+  Serial.println("[I2C] Sending '" + String(msg) + "' to other Arduino...");
+  Wire.beginTransmission(8);
+  Wire.write(msg);
   Wire.endTransmission();
   delay(200);
 }
