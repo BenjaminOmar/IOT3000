@@ -39,7 +39,7 @@ void setup() {
   Serial.println("[INFO] Alarm set up and ready");
   
   pinMode(BUZZER_PIN, OUTPUT);
-  Timer1.initialize(BUZZER_FREQUENCY);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
+  Timer1.initialize(500);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
   Timer1.attachInterrupt(toggleBuzzerPin); // knytt interrupt-funksjonen til timeren
   // TODO Serial.println
 
@@ -123,7 +123,7 @@ bool checkFor(unsigned long hexcode) {
 void handleState(enum AlarmState state) {
   switch (state) {
     case NOT_ENGAGED:
-      startTone();
+      startTone(BUZZER_FREQUENCY);
       digitalWrite(Y_LED_PIN, LOW);
       digitalWrite(G_LED_PIN, HIGH);
       digitalWrite(R_LED_PIN, LOW);
