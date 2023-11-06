@@ -1,7 +1,9 @@
 #include <IRremote.hpp>
 #include <Wire.h>
 
-#define PIR_PIN 2
+#define TRIG_PIN  8
+#define ECHO_PIN  7
+
 #define R_LED_PIN 3
 #define Y_LED_PIN 4
 #define G_LED_PIN 5
@@ -20,23 +22,23 @@ enum AlarmState {
   ACTIVATED
 };
 
-int state = LOW;
-int val = 0;
-
 enum AlarmState alarmState = NOT_ENGAGED;
 unsigned long signalCodeReceived;
-boolean buzzerIsActivated = false;
+
+bool initialDistanceRead = false;
+long initialDistance = 0;
 
 void setup() {
   Serial.begin(9600);
   
   Wire.begin();
 
+  pinMode(TRIG_PIN, OUTPUT);
+  pinMode(ECHO_PIN, INPUT);
+  Serial.println("[SETUP] Ultrasound sensor set up and ready");
+
   IrReceiver.begin(IR_PIN, false);   // Start the receiver
   Serial.println("[SETUP] IR receiver set up and ready");
-  
-  setupPIR();
-  Serial.println("[SETUP] PIR set up and ready");
 
   pinMode(R_LED_PIN, OUTPUT);
   pinMode(Y_LED_PIN, OUTPUT);
@@ -48,23 +50,45 @@ void setup() {
 
 void loop(){
   handleState(alarmState);
+
+  if (alarmState == ENGAGED) {
+    int currentDistance = measureDistance();
+    if (currentDistance == 0) return;
+    
+    if (!initialDistanceRead) {
+      initialDistance = currentDistance;
+      initialDistanceRead = true;
+    } else {
+      if (currentDistance > initialDistance + 5 || currentDistance < initialDistance - 5) {
+        alarmState = ACTIVATED;
+        sendToOtherArduino('A');
+      }
+    }
+  }
   
   bool hasReceived = readInfraRedSignalCode();
   if (!hasReceived) return;
 
   if (alarmState == ACTIVATED) {
-    if (signalCodeReceived == OK_HEXCODE) {
-      alarmState = ENGAGED;
+    if (signalCodeReceived == OK_HEXCODE || signalCodeReceived == POWER_HEXCODE) {
+      if (signalCodeReceived == OK_HEXCODE) {
+        alarmState = ENGAGED;
+        Serial.println("ENGAGED");
+      } else {
+        alarmState = NOT_ENGAGED;
+        Serial.println("NOT_ENGAGED");
+      }
+
       Serial.println("ALARM IS NOW DEACTIVATED, SLAPP AV!");
-      
-      Wire.beginTransmission(8);
-      Wire.write('D');
-      Wire.endTransmission();
+      sendToOtherArduino('D');
     }
   } else {
+    delay(1000);
+    
     if (signalCodeReceived == POWER_HEXCODE) {
       if (alarmState == ENGAGED) {
         alarmState = NOT_ENGAGED;
+        initialDistanceRead = false;
         Serial.println("ALARM IS NOT READY");
       } else {
         alarmState = ENGAGED;
@@ -73,43 +97,12 @@ void loop(){
     } else if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ACTIVATED;
 
-      Wire.beginTransmission(8);
-      Wire.write('A');
-      Wire.endTransmission();
-
       Serial.println("ALARM IS NOW ACTIVATED, RUN!");
-    }
-    
-    if (alarmState == ENGAGED) {
-      // READ MOTION VALUE
-      val = digitalRead(PIR_PIN);   // read sensor value
-      if (val == HIGH) {           // check if the sensor is HIGH
-        if (state == LOW) {
-          Serial.println("Motion detected!"); 
-          state = HIGH;       // update variable state to HIGH
-        }
-      } else {
-          digitalWrite(R_LED_PIN, LOW); // turn LED OFF
-          if (state == HIGH){
-            Serial.println("Motion stopped!");
-            state = LOW;       // update variable state to LOW
-        }
-      }
-      if (state == HIGH) {
-        alarmState = ACTIVATED;
-
-        Wire.beginTransmission(8);
-        Wire.write('A');
-        Wire.endTransmission();
-
-        return;
-      }
+      sendToOtherArduino('A');
     }
   }
-}
 
-void setupPIR() {
-  pinMode(PIR_PIN, INPUT);
+  signalCodeReceived = 0;
 }
 
 bool readInfraRedSignalCode() {
@@ -151,4 +144,25 @@ void sendToOtherArduino(char msg) {
   Wire.write(msg);
   Wire.endTransmission();
   delay(200);
+}
+
+long measureDistance() {
+  // digitalWrite(TRIG_PIN, LOW);
+  delayMicroseconds(2);
+  // After 2 micro-seconds of LOW signal, give a HIGH signal
+  // to trigger the sensor
+  digitalWrite(TRIG_PIN, HIGH);
+  // Keep the digital signal HIGH for at least 10 micro-seconds
+  // (required by HC-SR04 to activate emission of ultra-sonic waves)
+  delayMicroseconds(10);
+  // After 10 micro-seconds, signal a LOW
+  digitalWrite(TRIG_PIN, LOW);
+  // Now wait for the Ultra sonic echo to return from an obstacle
+  long duration = pulseIn(ECHO_PIN, HIGH);
+  Serial.println("[ULTRASOUND] Duration = " + String(duration));
+  // Convert the distance to centimeters
+  long distance = (duration/2) / 29.1;
+  Serial.println("[ULTRASOUND] Distance = " + String(distance) + "cm");
+
+  return distance;
 }
