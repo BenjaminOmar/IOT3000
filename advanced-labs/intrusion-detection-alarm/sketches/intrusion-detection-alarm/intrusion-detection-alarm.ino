@@ -1,4 +1,5 @@
 #include <IRremote.hpp>
+#include <TimerOne.h>
 
 #define PIR_PIN 2
 #define R_LED_PIN 3
@@ -8,77 +9,76 @@
 #define BUZZER_PIN  8
 #define IR_PIN      9
 
-#define POWER_HEXCODE 4061003520
-#define PLUS_HEXCODE  0xFF02FD
-#define MINUS_HEXCODE 0xFF9867
-#define DECODE_NEC
+#define POWER_HEXCODE 3125149440
+#define OK_HEXCODE    3927310080
 
-// Buzzer
-#define NOTE_C4 262
-#define NOTE_CS4 277
-#define NOTE_D4 294
-#define NOTE_DS4 311
-#define NOTE_E4 330
-#define NOTE_F4 349
-#define NOTE_FS4 370
-#define NOTE_G4 392
-#define NOTE_GS4 415
-#define NOTE_A4 440
-#define NOTE_AS4 466
-#define NOTE_B4 494
+#define BUZZER_FREQUENCY  500
+
+enum AlarmState {
+  NOT_ENGAGED,
+  ENGAGED,
+  ACTIVATED
+};
 
 int state = LOW;
 int val = 0;
 
-bool alarm_red = false;
-bool alarm_yellow = false;
+int buzzerState = LOW;
+enum AlarmState alarmState = NOT_ENGAGED;
 
-unsigned long hexcode_received;
+unsigned long hexcodeReceived;
 
 void setup() {
+  Serial.begin(9600);
+
   IrReceiver.begin(IR_PIN, false);   // Start the receiver
   setup_pir();
   pinMode(R_LED_PIN, OUTPUT);
   pinMode(Y_LED_PIN, OUTPUT);
   pinMode(G_LED_PIN, OUTPUT);
-  delay(2000); 
-  Serial.begin(9600);
+  Serial.println("[INFO] Alarm set up and ready");
+  
+  pinMode(BUZZER_PIN, OUTPUT);
+  digitalWrite(BUZZER_PIN, buzzerState);
+  Timer1.initialize(500);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
+  Timer1.attachInterrupt(toggleBuzzerPin); // knytt interrupt-funksjonen til timeren
+  // TODO Serial.println
+
+  delay(2000);
 }
 
 void loop(){
-  if (alarm_red) {
+  handleLights(alarmState);
+
+  read_ir();
+  
+  if (alarmState == ACTIVATED) {
     // TODO deactivating code
-    zap2();
-    digitalWrite(R_LED_PIN, HIGH);
-    digitalWrite(Y_LED_PIN, LOW);
-    digitalWrite(G_LED_PIN, LOW);
+
+    if (checkFor(OK_HEXCODE)) {
+      alarmState = ENGAGED;
+      stopTone();
+      Serial.println("ALARM IS NOW DEACTIVATED, SLAPP AV!");
+    }
+    hexcodeReceived = 0;
   } else {
-    delay(3000);
-    if (!alarm_yellow) { 
-        digitalWrite(G_LED_PIN, HIGH);
-        digitalWrite(Y_LED_PIN, LOW);
-        digitalWrite(R_LED_PIN, LOW);
+    // delay(1000);
 
-      bool got_power = check_for(POWER_HEXCODE);
-      if (got_power) {
-        alarm_yellow = true;
-        Serial.println("ALARM IS NOW READY");
-
-        digitalWrite(Y_LED_PIN, HIGH);
-        digitalWrite(G_LED_PIN, LOW);
-        digitalWrite(R_LED_PIN, LOW);
-      }
-    } else {
-      bool got_power = check_for(POWER_HEXCODE);
-      if (got_power) {
-        alarm_yellow = false;
+    if (checkFor(POWER_HEXCODE)) {
+      if (alarmState == ENGAGED) {
+        alarmState = NOT_ENGAGED;
         Serial.println("ALARM IS NOT READY");
-        digitalWrite(G_LED_PIN, HIGH);
-        digitalWrite(Y_LED_PIN, LOW);
-        digitalWrite(R_LED_PIN, LOW);
-        return;
+      } else {
+        alarmState = ENGAGED;
+        Serial.println("ALARM IS NOW READY");
       }
-
+    } else if (checkFor(OK_HEXCODE)) {
+      alarmState = ACTIVATED;
+      Serial.println("ALARM IS NOW ACTIVATED, RUN!");
+    }
+    hexcodeReceived = 0;
+    
+    if (alarmState == ENGAGED) {
       // READ MOTION VALUE
       val = digitalRead(PIR_PIN);   // read sensor value
       if (val == HIGH) {           // check if the sensor is HIGH
@@ -86,15 +86,18 @@ void loop(){
           Serial.println("Motion detected!"); 
           state = HIGH;       // update variable state to HIGH
         }
-      } 
-      else {
+      } else {
           digitalWrite(R_LED_PIN, LOW); // turn LED OFF
           if (state == HIGH){
             Serial.println("Motion stopped!");
             state = LOW;       // update variable state to LOW
         }
       }
-      if (state == HIGH) alarm_red = true; return;
+      if (state == HIGH) {
+        alarmState = ACTIVATED;
+        startTone(BUZZER_FREQUENCY); 
+        return;
+      }
     }
   }
 }
@@ -103,28 +106,64 @@ void setup_pir() {
   pinMode(PIR_PIN, INPUT);
 }
 
-void zap2()
-{
-  for (float f=3000;f>10;f=f*0.85){
-    tone(BUZZER_PIN,2*f);
-    delay(5);
-    tone(BUZZER_PIN,f);
-    delay(5); 
-  }
-}
-
 void read_ir() {
   if (IrReceiver.decode())
   {
-    hexcode_received = IrReceiver.decodedIRData.decodedRawData;
-    Serial.println(hexcode_received, HEX);
-    Serial.println(hexcode_received);
+    hexcodeReceived = IrReceiver.decodedIRData.decodedRawData;
+    Serial.println(hexcodeReceived, HEX);
+    Serial.println(hexcodeReceived);
     Serial.println("================");
     IrReceiver.resume(); // Receive the next value
   }
 }
 
-bool check_for(unsigned long hexcode) {
-  read_ir();
-  return (hexcode_received == hexcode);
+bool checkFor(unsigned long hexcode) {
+  return (hexcodeReceived == hexcode);
+}
+
+void handleLights(enum AlarmState state) {
+  switch (state) {
+    case NOT_ENGAGED:
+      digitalWrite(Y_LED_PIN, LOW);
+      digitalWrite(G_LED_PIN, HIGH);
+      digitalWrite(R_LED_PIN, LOW);
+      break;
+    case ENGAGED:
+      digitalWrite(Y_LED_PIN, HIGH);
+      digitalWrite(G_LED_PIN, LOW);
+      digitalWrite(R_LED_PIN, LOW);
+      break;
+    case ACTIVATED:
+      digitalWrite(Y_LED_PIN, LOW);
+      digitalWrite(G_LED_PIN, LOW);
+      digitalWrite(R_LED_PIN, HIGH);
+      break;
+  }
+}
+
+void myTone(byte pin, uint16_t frequency, uint16_t duration)
+{ // input parameters: Arduino pin number, frequency in Hz, duration in milliseconds
+  unsigned long startTime=millis();
+  unsigned long halfPeriod= 1000000L/frequency/2;
+  while (millis()-startTime< duration)
+  {
+    digitalWrite(BUZZER_PIN,HIGH);
+    delayMicroseconds(halfPeriod);
+    digitalWrite(BUZZER_PIN,LOW);
+    delayMicroseconds(halfPeriod);
+  }
+}
+
+void toggleBuzzerPin() {
+  buzzerState = !buzzerState;      // Veksle tilstanden
+  digitalWrite(BUZZER_PIN, buzzerState); // Sett buzzerPin til den nye tilstanden
+}
+
+void startTone(int frequency) {
+  Timer1.setPeriod(1000000 / frequency / 2); // For å få ønsket frekvens må vi dele 1 sekund (1000000 mikrosekunder) med frekvensen og deretter dele på 2 for å få både HIGH og LOW
+  Timer1.start(); // Start timeren
+}
+
+void stopTone() {
+  Timer1.stop(); // Stop timeren
 }
