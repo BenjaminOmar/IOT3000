@@ -1,18 +1,17 @@
 #include <IRremote.hpp>
-#include <TimerOne.h>
+#include <Wire.h>
 
 #define PIR_PIN 2
 #define R_LED_PIN 3
 #define Y_LED_PIN 4
 #define G_LED_PIN 5
 
-#define BUZZER_PIN  8
 #define IR_PIN      9
 
 #define POWER_HEXCODE 3125149440
 #define OK_HEXCODE    3927310080
 
-#define BUZZER_FREQUENCY  500
+#define SLAVE_ADDRESS 8
 
 enum AlarmState {
   NOT_ENGAGED,
@@ -25,9 +24,12 @@ int val = 0;
 
 enum AlarmState alarmState = NOT_ENGAGED;
 unsigned long signalCodeReceived;
+boolean buzzerIsActivated = false;
 
 void setup() {
   Serial.begin(9600);
+  
+  Wire.begin();
 
   IrReceiver.begin(IR_PIN, false);   // Start the receiver
   Serial.println("[SETUP] IR receiver set up and ready");
@@ -39,11 +41,6 @@ void setup() {
   pinMode(Y_LED_PIN, OUTPUT);
   pinMode(G_LED_PIN, OUTPUT);
   Serial.println("[SETUP] LEDs set up and ready");
-  
-  pinMode(BUZZER_PIN, OUTPUT);
-  Timer1.initialize(500);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
-  Timer1.attachInterrupt(toggleBuzzerPin); // knytt interrupt-funksjonen til timeren
-  Serial.println("[SETUP] Buzzer set up and ready");
 
   delay(2000);
 }
@@ -55,10 +52,14 @@ void loop(){
   if (!hasChanged) return;
 
   if (alarmState == ACTIVATED) {
+    if (!buzzerIsActivated) {
+      sendToOtherArduino(true);
+    }
+
     if (signalCodeReceived == OK_HEXCODE) {
       alarmState = ENGAGED;
-      stopTone();
       Serial.println("ALARM IS NOW DEACTIVATED, SLAPP AV!");
+      sendToOtherArduino(false);
     }
   } else {
     if (signalCodeReceived == POWER_HEXCODE) {
@@ -91,7 +92,6 @@ void loop(){
       }
       if (state == HIGH) {
         alarmState = ACTIVATED;
-        startTone(BUZZER_FREQUENCY); 
         return;
       }
     }
@@ -118,19 +118,16 @@ bool readInfraRedSignalCode() {
 void handleState(enum AlarmState state) {
   switch (state) {
     case NOT_ENGAGED:
-      startTone(BUZZER_FREQUENCY);
       digitalWrite(Y_LED_PIN, LOW);
       digitalWrite(G_LED_PIN, HIGH);
       digitalWrite(R_LED_PIN, LOW);
       break;
     case ENGAGED:
-      stopTone();
       digitalWrite(Y_LED_PIN, HIGH);
       digitalWrite(G_LED_PIN, LOW);
       digitalWrite(R_LED_PIN, LOW);
       break;
     case ACTIVATED:
-      stopTone();
       digitalWrite(Y_LED_PIN, LOW);
       digitalWrite(G_LED_PIN, LOW);
       digitalWrite(R_LED_PIN, HIGH);
@@ -138,16 +135,9 @@ void handleState(enum AlarmState state) {
   }
 }
 
-void toggleBuzzerPin() {
-  int buzzerState = (alarmState == ACTIVATED) ? HIGH : LOW;      // Veksle tilstanden
-  digitalWrite(BUZZER_PIN, buzzerState); // Sett buzzerPin til den nye tilstanden
-}
-
-void startTone(int frequency) {
-  Timer1.setPeriod(1000000 / frequency / 2); // For å få ønsket frekvens må vi dele 1 sekund (1000000 mikrosekunder) med frekvensen og deretter dele på 2 for å få både HIGH og LOW
-  Timer1.start(); // Start timeren
-}
-
-void stopTone() {
-  Timer1.stop(); // Stop timeren
+void sendToOtherArduino(bool activate) {
+  Wire.beginTransmission(SLAVE_ADDRESS);
+  Wire.write(activate);
+  Wire.endTransmission();
+  delay(200);
 }
