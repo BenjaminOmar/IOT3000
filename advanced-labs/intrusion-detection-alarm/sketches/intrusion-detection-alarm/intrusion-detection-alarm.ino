@@ -39,8 +39,7 @@ void setup() {
   Serial.println("[INFO] Alarm set up and ready");
   
   pinMode(BUZZER_PIN, OUTPUT);
-  digitalWrite(BUZZER_PIN, buzzerState);
-  Timer1.initialize(500);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
+  Timer1.initialize(BUZZER_FREQUENCY);         // Initialiser timeren til å avbryte hver 500 mikrosekunder (~2kHz tone)
   Timer1.attachInterrupt(toggleBuzzerPin); // knytt interrupt-funksjonen til timeren
   // TODO Serial.println
 
@@ -48,7 +47,7 @@ void setup() {
 }
 
 void loop(){
-  handleLights(alarmState);
+  handleState(alarmState);
 
   read_ir();
   
@@ -121,19 +120,22 @@ bool checkFor(unsigned long hexcode) {
   return (hexcodeReceived == hexcode);
 }
 
-void handleLights(enum AlarmState state) {
+void handleState(enum AlarmState state) {
   switch (state) {
     case NOT_ENGAGED:
+      startTone();
       digitalWrite(Y_LED_PIN, LOW);
       digitalWrite(G_LED_PIN, HIGH);
       digitalWrite(R_LED_PIN, LOW);
       break;
     case ENGAGED:
+      stopTone();
       digitalWrite(Y_LED_PIN, HIGH);
       digitalWrite(G_LED_PIN, LOW);
       digitalWrite(R_LED_PIN, LOW);
       break;
     case ACTIVATED:
+      stopTone();
       digitalWrite(Y_LED_PIN, LOW);
       digitalWrite(G_LED_PIN, LOW);
       digitalWrite(R_LED_PIN, HIGH);
@@ -141,21 +143,8 @@ void handleLights(enum AlarmState state) {
   }
 }
 
-void myTone(byte pin, uint16_t frequency, uint16_t duration)
-{ // input parameters: Arduino pin number, frequency in Hz, duration in milliseconds
-  unsigned long startTime=millis();
-  unsigned long halfPeriod= 1000000L/frequency/2;
-  while (millis()-startTime< duration)
-  {
-    digitalWrite(BUZZER_PIN,HIGH);
-    delayMicroseconds(halfPeriod);
-    digitalWrite(BUZZER_PIN,LOW);
-    delayMicroseconds(halfPeriod);
-  }
-}
-
 void toggleBuzzerPin() {
-  buzzerState = !buzzerState;      // Veksle tilstanden
+  int buzzerState = (alarmState == ACTIVATED) ? HIGH : LOW;      // Veksle tilstanden
   digitalWrite(BUZZER_PIN, buzzerState); // Sett buzzerPin til den nye tilstanden
 }
 
