@@ -1,100 +1,135 @@
+#include <ESP8266HTTPClient.h>
 #include <ESP8266WiFi.h>
-#include <ESP8266WebServer.h>
+#include <ArduinoJson.h>
+#include <Wire.h>
 
-#ifndef STASSID
-#define STASSID "NotFreeWiFi"
-#define STAPSK "dcdb3739"
-#endif
+#define ADDRESS_ARDUINO 8
 
-const char* ssid = STASSID;
-const char* password = STAPSK;
+#define SECRET_SSID "<SSID>"
+#define SECRET_PASS "<PASS>"
+#define TIMEOUT_MS  3000
 
-String s;  // Web page content
-ESP8266WebServer server(80);
+#define CODE_LENGTH   4
+#define DEVICE_ID     1
 
-void handleRoot() {
-  server.send(200, "text/html", s);
-}
+const char *SSID = SECRET_SSID;
+const char *PASS = SECRET_PASS;
 
-void handleNotFound() {
-  String message = "File Not Found\n\n";
-  message += "URI: ";
-  message += server.uri();
-  message += "\nMethod: ";
-  message += (server.method() == HTTP_GET) ? "GET" : "POST";
-  message += "\nArguments: ";
-  message += server.args();
-  message += "\n";
-  for (uint8_t i = 0; i < server.args(); i++) { message += " " + server.argName(i) + ": " + server.arg(i) + "\n"; }
-  server.send(404, "text/plain", message);
-}
+const int PORT = 5000;
+const String HOST_NAME = "127.0.0.1";
+const String BASE_URL = "http://" + HOST_NAME + ":" + String(PORT) + "/";
+const String API_URL = BASE_URL + "api/v1/";
 
-void handleGranted() {
-  s = "";
-  s = "<DOCTYPE html>";
-  s += "<html>";
-  s += "<body>";
-  s += "<h1>Login successful</h1>";
-  s += "<p>You are now logged in!</p>";
-  s += "</body>";
-  s += "</html>";
-}
+WiFiClient wifiClient;
+HTTPClient httpClient;
 
-void handleDenied() {
-  s = "";
-  s = "<DOCTYPE html>";
-  s += "<html>";
-  s += "<body>";
-  s += "<h1>BUMMER</h1>";
-  s += "<p>DENIED!</p>";
-  s += "</body>";
-  s += "</html>";
-}
+String userToken = "";
 
-void redirect_home() {
-  server.sendHeader("Location", "/");
-  server.send(303);
-}
+void setup() {
+  Serial.begin(9600);
 
-void setup(void) {
-  // Start serial
-  Serial.begin(115200);
-
-  // TODO PINs
-
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(ssid, password);
-
-  // Wait for connection
+  Serial.print("[SETUP] [WIFI] Connecting to \"" + String(SSID) + "\"");
+  WiFi.begin(SSID, PASS);
   while (WiFi.status() != WL_CONNECTED) {
-    delay(500);
     Serial.print(".");
-  }
-  Serial.println("");
-  Serial.print("Connected to ");
-  Serial.println(ssid);
-  Serial.print("IP address: ");
-  Serial.println(WiFi.localIP());
+    delay(TIMEOUT_MS);
+  } Serial.println();
+  Serial.println("[SETUP] [WIFI] Connection successful");
+  Serial.println("[SETUP] [WIFI] [IP] " + WiFi.localIP().toString());
 
-  s = "<DOCTYPE html>";
-  s += "<html>";
-  s += "<body>";
-  s += "<h1>Home</h1>";
-  s += "<p>Waiting for login attempt...</p>";
-  s += "</body>";
-  s += "</html>";
+  Serial.printf("[SETUP] [CLIENT] Connecting to \"%s\"", BASE_URL);
+  while ( !wifiClient.connect(HOST_NAME, PORT) ) {
+    Serial.print(".A.");
+    delay(TIMEOUT_MS);
+  } Serial.println();
+  Serial.println("[SETUP] [CLIENT] Connection successful");
 
-  server.on("/", handleRoot);
-  server.onNotFound(handleNotFound);
+  Wire.begin(ADDRESS_ARDUINO);
+  Wire.onReceive(receiveEvent);
+  Serial.println("[SETUP] [WIRE] Ready to communicate with Arduino");
 
-  // Handle turning the LED on / off
-  server.on("/granted", handleGranted);
-  server.on("/denied", handleDenied);
-
-  server.begin();
-  Serial.println("HTTP server started");
+  delay(2000);
 }
 
-void loop(void) {
-  server.handleClient();
+void loop() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  if (userToken.length() == 0) {
+    userToken = fetchUserToken();
+    if (userToken.length() > 0) {
+      Serial.println("[TOKEN] " + userToken);
+    }
+  }
+
+  delay(5000);
+}
+
+void receiveEvent(int bytes) {
+  String code = "";
+  while (0 < Wire.available()) {
+    char c = Wire.read();
+    code += c;
+  }
+  if (code.length() == CODE_LENGTH) {
+    sendCodeAttemptRequest(code);
+  }
+}
+
+String fetchUserToken() {
+  Serial.println("[HTTP] Fetching user token...");
+
+  httpClient.begin(wifiClient, API_URL + "/auth/login");
+  httpClient.addHeader("Content-Type", "application/json");
+
+  StaticJsonDocument<200> doc;
+  doc["email"] = "admin@accesscontrolsystem.com";
+  doc["password"] = "accesscontrolsystem123?";
+
+  String requestBody;
+  serializeJson(doc, requestBody);
+
+  int httpResponseCode = httpClient.POST(requestBody);
+  if (httpResponseCode > 0) {
+    String response = httpClient.getString();
+    Serial.println(response);
+
+    StaticJsonDocument<768> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (error) {
+      Serial.print("JSON deserialization failed: ");
+      Serial.println(error.f_str());
+    } else {
+      return doc["token"]; 
+    }
+  } else Serial.printf("[HTTP] An error occurred: %s", httpClient.errorToString(httpResponseCode).c_str());
+  
+  return "";
+}
+
+void sendCodeAttemptRequest(String code) {
+  Serial.println("[HTTP] Fetching user token...");
+  
+  httpClient.begin(wifiClient, API_URL + "/attempt");
+  httpClient.addHeader("Content-Type", "application/json");
+  httpClient.addHeader("Authorization", "Token " + userToken);
+
+  StaticJsonDocument<200> doc;
+  doc["code"] = code;
+  doc["device"] = DEVICE_ID;
+
+  String requestBody;
+  serializeJson(doc, requestBody);
+
+  int httpResponseCode = httpClient.POST(requestBody);
+  if (httpResponseCode > 0) {
+    String response = httpClient.getString();
+    Serial.println(response);
+
+    StaticJsonDocument<768> doc;
+    DeserializationError error = deserializeJson(doc, response);
+    if (error) {
+      Serial.print("JSON deserialization failed: ");
+      Serial.println(error.f_str());
+    }
+  } else Serial.printf("[HTTP] An error occurred: %s\n", httpClient.errorToString(httpResponseCode).c_str());
 }

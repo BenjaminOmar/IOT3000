@@ -96,6 +96,7 @@ void loop() {
       turnOnOneLED(false);
       displayLines("ACCESS DENIED", "Please try again.");
     }
+    sendToESP8266(asString);
     
     resetKeys();
     delay(MILLIS_AFTER_CODE_CHECK);
@@ -156,4 +157,11 @@ String getAsSecret(char symbol) {
     hidden += symbol;
   }
   return hidden;
+}
+
+void sendToESP8266(String code) {
+  Wire.beginTransmission(ADDRESS_ESP8266);
+  Wire.write(code);
+  Wire.endTransmission();
+  delay(500);
 }
