@@ -9,14 +9,17 @@
 #define SECRET_PASS "<PASS>"
 #define TIMEOUT_MS  3000
 
+#define DEV_HOST_NAME "<LAN IPv4>"
+#define DEV_PORT      8080
+
 #define CODE_LENGTH   4
 #define DEVICE_ID     1
 
 const char *SSID = SECRET_SSID;
 const char *PASS = SECRET_PASS;
 
-const int PORT = 5000;
-const String HOST_NAME = "127.0.0.1";
+const int PORT = DEV_PORT;
+const String HOST_NAME = DEV_HOST_NAME;
 const String BASE_URL = "http://" + HOST_NAME + ":" + String(PORT) + "/";
 const String API_URL = BASE_URL + "api/v1/";
 
@@ -26,9 +29,12 @@ HTTPClient httpClient;
 String userToken = "";
 
 void setup() {
+  delay(5000);
+
   Serial.begin(9600);
 
   Serial.print("[SETUP] [WIFI] Connecting to \"" + String(SSID) + "\"");
+  WiFi.mode(WIFI_STA);
   WiFi.begin(SSID, PASS);
   while (WiFi.status() != WL_CONNECTED) {
     Serial.print(".");
@@ -37,9 +43,9 @@ void setup() {
   Serial.println("[SETUP] [WIFI] Connection successful");
   Serial.println("[SETUP] [WIFI] [IP] " + WiFi.localIP().toString());
 
-  Serial.printf("[SETUP] [CLIENT] Connecting to \"%s\"", BASE_URL);
+  Serial.print("[SETUP] [CLIENT] Connecting to \"" + BASE_URL + "\"");
   while ( !wifiClient.connect(HOST_NAME, PORT) ) {
-    Serial.print(".A.");
+    Serial.print(".");
     delay(TIMEOUT_MS);
   } Serial.println();
   Serial.println("[SETUP] [CLIENT] Connection successful");
@@ -78,7 +84,7 @@ void receiveEvent(int bytes) {
 String fetchUserToken() {
   Serial.println("[HTTP] Fetching user token...");
 
-  httpClient.begin(wifiClient, API_URL + "/auth/login");
+  httpClient.begin(wifiClient, API_URL + "auth/login");
   httpClient.addHeader("Content-Type", "application/json");
 
   StaticJsonDocument<200> doc;
@@ -87,11 +93,14 @@ String fetchUserToken() {
 
   String requestBody;
   serializeJson(doc, requestBody);
+  Serial.println("[HTTP] [TOKEN-REQUEST] [BODY] " + requestBody);
 
   int httpResponseCode = httpClient.POST(requestBody);
+  Serial.println("[HTTP] <HTTP " + String(httpResponseCode) + ">");
+  
   if (httpResponseCode > 0) {
     String response = httpClient.getString();
-    Serial.println(response);
+    Serial.println("[HTTP] [RESPONSE] " + response);
 
     StaticJsonDocument<768> doc;
     DeserializationError error = deserializeJson(doc, response);
@@ -109,7 +118,7 @@ String fetchUserToken() {
 void sendCodeAttemptRequest(String code) {
   Serial.println("[HTTP] Fetching user token...");
   
-  httpClient.begin(wifiClient, API_URL + "/attempt");
+  httpClient.begin(wifiClient, API_URL + "attempt");
   httpClient.addHeader("Content-Type", "application/json");
   httpClient.addHeader("Authorization", "Token " + userToken);
 
