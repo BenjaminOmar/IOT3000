@@ -3,9 +3,15 @@
   @see https://lastminuteengineers.com/arduino-keypad-tutorial/
 */
 
+// EasyLogger configuration (must be BEFORE include)
+#define LOG_LEVEL       LOG_LEVEL_DEBUG
+#define LOG_FORMATTING  LOG_FORMATTING_NOTIME
+
 #include <Keypad.h>
-#include <Wire.h>
 #include <LiquidCrystal_I2C.h>
+#include <EasyLogger.h>
+
+#define BAUD_RATE 9600
 
 #define R_LED_PIN 12
 #define G_LED_PIN 13
@@ -23,50 +29,62 @@
 #define ENTER_CODE_TEXT "Enter code"
 #define SECRET_SYMBOL   '*'
 
+// Mapping of all keys on keyboard, row by row
 const byte ROWS = 4;
 const byte COLS = 4;
-
 const char ALL_KEYS[ROWS][COLS] = {
   {'1','2','3','A'},
   {'4','5','6','B'},
   {'7','8','9','C'},
   {'*','0','#','D'}
 };
-const char SECRET_KEYS[MAX_CODE_LENGTH] = {'1', '4', '7', '*'};
 
-const byte rowPins[ROWS] = {2, 3, 4, 5}; //connect to the row pinouts of the keypad
-const byte colPins[COLS] = {6, 7, 8, 9}; //connect to the column pinouts of the keypad
+// Characters for secret code, in order
+const char SECRET_KEYS[MAX_CODE_LENGTH] = {'2', '0', '2', '5'};
 
-bool displayedEnterCodeText = false;
+const byte rowPins[ROWS] = {9, 8, 7, 6}; // Pins corresponding to rows on keyboard
+const byte colPins[COLS] = {5, 4, 3, 2}; // Pins corresponding to columns on keyboard
 
-//Create an object of keypad
 Keypad keypad = Keypad( makeKeymap(ALL_KEYS), rowPins, colPins, ROWS, COLS );
+unsigned int keysLeft = MAX_CODE_LENGTH;  // How many keys are left to type
+char keys[MAX_CODE_LENGTH * 2];           // What characters have been typed, in order (with extra safety buffer size)
 
-//Create lcd object
-LiquidCrystal_I2C lcd(0x27,LCD_COLS,LCD_ROWS); //address, cols, rows
-
-int keysLeft = MAX_CODE_LENGTH;
-char keys[MAX_CODE_LENGTH];
+LiquidCrystal_I2C lcd(0x27,LCD_COLS,LCD_ROWS);
+bool displayedEnterCodeText = false;  // Whether initial message has been displayed yet
 
 void setup() {
-  Serial.begin(9600);
+  Serial.begin(BAUD_RATE);
   
-  Serial.println("=== Access Control System ===");
+  LOG_DEBUG("SETUP", "=== Access Control System ===");
+
+  // Keypad
+  LOG_DEBUG("SETUP", "Keypad [✔]");
 
   // LEDs
   setupLEDs();
   turnAllLEDs(OFF);
-  Serial.println("\tLEDs ready ✔");
+  LOG_DEBUG("SETUP", "LEDs [✔]");
   
   // LCD
   setupLCD();
   displayLines("Getting ready...", "Just a minute!");
-  Serial.println("\tLCD ready ✔");
+  LOG_DEBUG("SETUP", "LCD screen [✔]");
 
-  Serial.println("All components operational and ready.");
+  LOG_DEBUG("SETUP", "All components operational and ready.");
 
   delay(3000);
   lcd.clear();
+}
+
+void setupLEDs() {
+  pinMode(R_LED_PIN, OUTPUT);
+  pinMode(G_LED_PIN, OUTPUT);
+}
+
+void setupLCD() {
+  lcd.init();
+  lcd.home();
+  lcd.backlight();
 }
 
 void loop() {
@@ -80,23 +98,23 @@ void loop() {
     char key = keypad.getKey();
     if (key) {
       addNewKey(key);
-      Serial.println("Pressed: " + String(key));
-      displayLines(ENTER_CODE_TEXT, getAsSecret(SECRET_SYMBOL));
+      LOG_DEBUG("KEYPAD", "Pressed '" + String(key) + "'");
+      displayLines(ENTER_CODE_TEXT, getAsSecret(keysLeft));
       delay(MILLIS_BETWEEN_KEY_PRESS);
     }
   } else {
-    const String asString = keys;
-    Serial.println("You entered: " + asString.substring(0, asString.length() - 1));
+    LOG_DEBUG("KEYPAD", keys);
 
     bool isValidCode = strncmp(keys, SECRET_KEYS, sizeof(keys)) == 0;
     if (isValidCode) {
       turnOnOneLED(true);
       displayLines("ACCESS GRANTED", "Welcome!");
+      LOG_INFO("ACCESS CONTROL", "Access granted");
     } else {
       turnOnOneLED(false);
       displayLines("ACCESS DENIED", "Please try again.");
+      LOG_INFO("ACCESS CONTROL", "Access denied");
     }
-    sendToESP8266(asString);
     
     resetKeys();
     delay(MILLIS_AFTER_CODE_CHECK);
@@ -116,15 +134,18 @@ void resetKeys() {
   keysLeft = MAX_CODE_LENGTH;
 }
 
-void setupLEDs() {
-  pinMode(R_LED_PIN, OUTPUT);
-  pinMode(G_LED_PIN, OUTPUT);
+String truncate(String text, const int maxLength) {
+  const String ellipsis = "...";
+  return text.length() > maxLength ?
+    text.substring(0, maxLength - ellipsis.length()) + ellipsis : text;
 }
 
-void setupLCD() {
-  lcd.init();
-  lcd.home();
-  lcd.backlight();
+String getAsSecret(int keysLeft) {
+  String hidden = "";
+  for (int i = 0; i < MAX_CODE_LENGTH - keysLeft; i++) {
+    hidden += SECRET_SYMBOL;
+  }
+  return hidden;
 }
 
 void displayLines(String first, String second) {
@@ -135,12 +156,6 @@ void displayLines(String first, String second) {
   lcd.print(truncate(second, LCD_COLS));
 }
 
-String truncate(String text, const int maxLength) {
-  const String ellipsis = "...";
-  return text.length() > maxLength ?
-    text.substring(0, maxLength - ellipsis.length()) + ellipsis : text;
-}
-
 void turnOnOneLED(bool isGreen) {
   digitalWrite(G_LED_PIN, isGreen ? HIGH : LOW);
   digitalWrite(R_LED_PIN, isGreen ? LOW : HIGH);
@@ -149,19 +164,4 @@ void turnOnOneLED(bool isGreen) {
 void turnAllLEDs(bool on) {
   digitalWrite(G_LED_PIN, on ? HIGH : LOW);
   digitalWrite(R_LED_PIN, on ? HIGH : LOW);
-}
-
-String getAsSecret(char symbol) {
-  String hidden = "";
-  for (int i = 0; i < MAX_CODE_LENGTH - keysLeft; i++) {
-    hidden += symbol;
-  }
-  return hidden;
-}
-
-void sendToESP8266(String code) {
-  Wire.beginTransmission(ADDRESS_ESP8266);
-  Wire.write(code);
-  Wire.endTransmission();
-  delay(500);
 }
